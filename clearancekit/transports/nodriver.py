@@ -460,7 +460,15 @@ class NodriverDriver:
                 return None
             src = getattr(target_info, "url", "")
 
-            # Read text via OOPIF attachment
+            # Read *visible* text via OOPIF attachment.
+            #
+            # Turnstile keeps DOM nodes for every state ("Verifying",
+            # "Success", "Verification failed", …) present at all times
+            # and toggles them with CSS display:none.  A raw text-node
+            # walk returns every keyword at once, making substring-based
+            # detection ambiguous.  We use CDP DOM.getBoxModel to filter:
+            # hidden nodes (display:none) throw "Could not compute box
+            # model", visible ones return actual dimensions.
             text: str | None = None
             try:
                 session_id = await self._tab.send(
@@ -473,9 +481,21 @@ class NodriverDriver:
                     cdp.dom.get_document(depth=-1, pierce=True),
                     sessionId=str(session_id),
                 )
-                texts: list[str] = []
-                self._collect_text_nodes(oopif_doc, texts)
-                text = " ".join(texts) or None
+                all_nodes: list[tuple[str, int]] = []
+                self._walk_text_nodes(oopif_doc, all_nodes)
+                visible: list[str] = []
+                for val, bid in all_nodes:
+                    try:
+                        await self._tab.send(
+                            cdp.dom.get_box_model(
+                                backend_node_id=cdp.dom.BackendNodeId(bid),
+                            ),
+                            sessionId=str(session_id),
+                        )
+                        visible.append(val)
+                    except Exception:
+                        pass
+                text = " ".join(visible) or None
             except Exception:
                 pass
             finally:
@@ -532,25 +552,38 @@ class NodriverDriver:
         except Exception:
             return None
 
+    _SKIP_TAG_NAMES = frozenset({"SCRIPT", "STYLE"})
+
     @staticmethod
-    def _collect_text_nodes(
-        node: object, out: list[str],
+    def _walk_text_nodes(
+        node: object, out: list[tuple[str, int]],
     ) -> None:
-        """Walk a DOM tree collecting text node values."""
+        """Walk a CDP DOM tree collecting ``(text, backend_node_id)`` pairs.
+
+        Skips SCRIPT/STYLE subtrees whose text is code, not visible UI
+        text (Turnstile embeds a JS localization dict with all state
+        keywords).  The caller uses ``backend_node_id`` with
+        ``DOM.getBoxModel`` to filter out CSS-hidden nodes.
+        """
+        if (
+            getattr(node, "node_name", "") or ""
+        ).upper() in NodriverDriver._SKIP_TAG_NAMES:
+            return
         if getattr(node, "node_type", 0) == 3:
             val = (
                 getattr(node, "node_value", "") or ""
             ).strip()
-            if val:
-                out.append(val)
+            bid = getattr(node, "backend_node_id", None)
+            if val and bid is not None:
+                out.append((val, int(bid)))
         for sr in getattr(node, "shadow_roots", None) or []:
-            NodriverDriver._collect_text_nodes(sr, out)
+            NodriverDriver._walk_text_nodes(sr, out)
         for child in (
             getattr(node, "children", None) or []
         ):
-            NodriverDriver._collect_text_nodes(child, out)
+            NodriverDriver._walk_text_nodes(child, out)
         if getattr(node, "content_document", None):
-            NodriverDriver._collect_text_nodes(
+            NodriverDriver._walk_text_nodes(
                 node.content_document, out,
             )
 

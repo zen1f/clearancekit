@@ -510,13 +510,16 @@ class TestFindIframe:
 
         text_node = MagicMock()
         text_node.node_type = 3
+        text_node.node_name = "#text"
         text_node.node_value = "Verify you are human"
+        text_node.backend_node_id = 7
         text_node.shadow_roots = None
         text_node.children = None
         text_node.content_document = None
 
         oopif_doc = MagicMock()
         oopif_doc.node_type = 1
+        oopif_doc.node_name = "#document"
         oopif_doc.node_value = None
         oopif_doc.shadow_roots = []
         oopif_doc.children = [text_node]
@@ -547,13 +550,17 @@ class TestFindIframe:
             [10.0, 20.0, 310.0, 20.0, 310.0, 85.0, 10.0, 85.0],
         ]
 
+        box_model = MagicMock()
+
         # Flow: get_targets → attach → get_document(oopif) →
-        #       detach → get_document(parent) → resolve_node →
+        #       get_box_model (visible) → detach →
+        #       get_document(parent) → resolve_node →
         #       get_content_quads
         mock_tab.send = AsyncMock(side_effect=[
             [target_info],
             session_id,
             oopif_doc,
+            box_model,
             None,  # detach
             parent_doc,
             remote_obj,
