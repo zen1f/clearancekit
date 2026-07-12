@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime
+profiles/
+captures/
+data/
+*.log
+
+# IDE
+.vscode/
+.cursor/
+.idea/
+*.swp
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Build
+*.egg
+
+# Testing
+coverage.xml
+
+# Env
+.env
+*.env
